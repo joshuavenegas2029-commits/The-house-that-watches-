@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The House That Watches</title>
+<style>
+html,body{margin:0;background:#050505;color:#ddd;font-family:monospace;height:100%;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none}
+body{display:flex;align-items:center;justify-content:center}
+#wrap{width:min(96vw,900px);text-align:center}
+canvas{width:100%;height:auto;max-height:68vh;image-rendering:pixelated;background:#111;border:2px solid #333}
+p{margin:7px 0;font-size:14px}
+</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="game" width="800" height="600"></canvas>
+<p id="controls">WASD / Arrow Keys: move &nbsp; • &nbsp; E: open/close doors &nbsp; • &nbsp; R: restart</p>
+<div id="mobile">
+  <div class="dpad">
+    <button data-k="w">▲</button>
+    <div><button data-k="a">◀</button><button data-k="s">▼</button><button data-k="d">▶</button></div>
+  </div>
+  <div class="actions"><button id="eBtn">OPEN</button><button id="rBtn">RESTART</button></div>
+</div>
+<style>
+#mobile{display:none;justify-content:space-between;align-items:end;padding:8px 18px calc(10px + env(safe-area-inset-bottom));}
+#mobile button{width:54px;height:48px;margin:3px;border:1px solid #777;border-radius:10px;background:#222;color:#eee;font:bold 18px monospace;touch-action:none}
+.actions{display:flex;flex-direction:column;align-items:center}.actions button{width:78px;font-size:12px}
+@media (max-width:700px){#controls{display:none}#mobile{display:flex}.dpad{text-align:center}}
+</style>
+</div>
+<script>
+const c=document.getElementById("game"),x=c.getContext("2d");
+const keys={}; onkeydown=e=>{keys[e.key.toLowerCase()]=true;if(e.key.toLowerCase()==="r")location.reload()};
+onkeyup=e=>keys[e.key.toLowerCase()]=false;
+
+const walls=[
+{x:40,y:40,w:720,h:20},{x:40,y:540,w:720,h:20},{x:40,y:40,w:20,h:520},{x:740,y:40,w:20,h:520},
+{x:300,y:40,w:20,h:190},{x:300,y:330,w:20,h:230},{x:500,y:40,w:20,h:150},{x:500,y:260,w:20,h:300},
+{x:40,y:230,w:180,h:20},{x:380,y:230,w:120,h:20},{x:560,y:230,w:180,h:20},
+{x:180,y:400,w:20,h:160},{x:620,y:400,w:20,h:160}
+];
+const doors=[
+{x:300,y:230,w:20,h:100,open:false},
+{x:500,y:190,w:20,h:70,open:false},
+{x:220,y:230,w:80,h:20,open:false},
+{x:500,y:230,w:60,h:20,open:false}
+];
+const keysToFind=[
+{x:115,y:115,got:false},{x:675,y:120,got:false},{x:675,y:475,got:false}
+];
+let p={x:105,y:480,r:10,s:2.5}, monster={x:680,y:480,active:false};
+let msg="Find the 3 keys. Don't let it catch you.",timer=0,won=false,dead=false,lastDoor=0;
+
+function blocked(nx,ny){
+ for(const w of walls)if(nx+p.r>w.x&&nx-p.r<w.x+w.w&&ny+p.r>w.y&&ny-p.r<w.y+w.h)return true;
+ for(const d of doors)if(!d.open&&nx+p.r>d.x&&nx-p.r<d.x+d.w&&ny+p.r>d.y&&ny-p.r<d.y+d.h)return true;
+ return false;
+}
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+function draw(){
+ x.fillStyle="#111";x.fillRect(0,0,800,600);
+ // floor rooms
+ x.fillStyle="#181818";x.fillRect(60,60,680,480);
+ x.fillStyle="#222";
+ for(let yy=60;yy<540;yy+=40)for(let xx=60;xx<740;xx+=40)x.strokeRect(xx,yy,40,40);
+ // walls
+ x.fillStyle="#080808";for(const w of walls)x.fillRect(w.x,w.y,w.w,w.h);
+ // doors
+ for(const d of doors){x.fillStyle=d.open?"#222":"#6b3d18";x.fillRect(d.x,d.y,d.w,d.h)}
+ // keys
+ for(const k of keysToFind)if(!k.got){
+  x.fillStyle="#e6c84f";x.beginPath();x.arc(k.x,k.y,7,0,7);x.fill();
+  x.fillRect(k.x+5,k.y-2,13,4);x.fillRect(k.x+13,k.y-2,3,8);
+ }
+ // monster
+ if(monster.active&&!dead&&!won){
+  x.fillStyle="#090909";x.beginPath();x.arc(monster.x,monster.y,14,0,7);x.fill();
+  x.fillStyle="#f22";x.fillRect(monster.x-7,monster.y-4,4,4);x.fillRect(monster.x+3,monster.y-4,4,4);
+ }
+ // player
+ x.fillStyle="#c9c9c9";x.beginPath();x.arc(p.x,p.y,p.r,0,7);x.fill();
+ // darkness
+ const g=x.createRadialGradient(p.x,p.y,40,p.x,p.y,170);g.addColorStop(0,"rgba(0,0,0,0)");g.addColorStop(1,"rgba(0,0,0,.88)");
+ x.fillStyle=g;x.fillRect(0,0,800,600);
+ // HUD
+ x.fillStyle="#ddd";x.font="18px monospace";x.fillText("KEYS: "+keysToFind.filter(k=>k.got).length+"/3",60,28);
+ x.font="15px monospace";x.fillText(msg,230,28);
+ if(won||dead){x.fillStyle="rgba(0,0,0,.75)";x.fillRect(0,0,800,600);x.fillStyle=won?"#ddd":"#f44";x.font="34px monospace";x.textAlign="center";x.fillText(won?"YOU ESCAPED":"IT FOUND YOU",400,285);x.font="18px monospace";x.fillText("Press R to play again",400,320);x.textAlign="left"}
+}
+function update(){
+ if(won||dead){draw();requestAnimationFrame(update);return}
+ let dx=0,dy=0;if(keys.w||keys.arrowup)dy--;if(keys.s||keys.arrowdown)dy++;if(keys.a||keys.arrowleft)dx--;if(keys.d||keys.arrowright)dx++;
+ if(dx||dy){let l=Math.hypot(dx,dy);dx/=l;dy/=l;let nx=p.x+dx*p.s,ny=p.y+dy*p.s;if(!blocked(nx,p.y))p.x=nx;if(!blocked(p.x,ny))p.y=ny}
+ // collect keys
+ for(const k of keysToFind)if(!k.got&&dist(p,k)<18){k.got=true;msg="A key. Something heard that.";monster.active=true}
+ // door toggle near player
+ if(keys.e&&!lastDoor){for(const d of doors)if(dist(p,{x:d.x+d.w/2,y:d.y+d.h/2})<38)d.open=!d.open;lastDoor=1}else if(!keys.e)lastDoor=0;
+ if(monster.active){
+  let dx=p.x-monster.x,dy=p.y-monster.y,l=Math.hypot(dx,dy)||1;
+  let speed=.72;
+  // monster slows down when separated by a closed door
+  for(const d of doors)if(!d.open&&((monster.x<d.x&&p.x>d.x)||(monster.x>d.x+d.w&&p.x<d.x))){
+    if(Math.abs((monster.y)-(d.y+d.h/2))<d.h/2+20)speed=.18;
+  }
+  monster.x+=dx/l*speed;monster.y+=dy/l*speed;
+  if(dist(p,monster)<22){dead=true;msg="";}
+ }
+ if(keysToFind.every(k=>k.got)&&p.x>650&&p.y>500){won=true;msg="";}
+ draw();requestAnimationFrame(update);
+}
+draw();requestAnimationFrame(update);
+</script>
+</body>
+</html>
